@@ -722,7 +722,7 @@ void	Graphics::render(graphics_options& opt, const double& deltaTime)
 	};
 	vkCmdPushConstants(cmdBuff, _pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(constants), &constants);
 	
-	vkCmdDraw(cmdBuff, 6, 1, 0, 0);
+	vkCmdDraw(cmdBuff, 3, 1, 0, 0);
 
 
 
