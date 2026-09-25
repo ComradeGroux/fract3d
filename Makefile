@@ -20,8 +20,8 @@ SPVS_HEADER_DIR := $(BUILD_DIR)/shaders-include
 SRCS	:= $(wildcard $(SRC_DIR)/*.cpp)
 VPATH	:= $(dir $(SRCS))
 OBJS	:= $(addprefix $(OBJS_DIR)/, $(notdir $(SRCS:.cpp=.o)))
-SHADER_SRCS :=	ui.frag \
-				ui.vert
+SHADER_SRCS :=	base.vert 		\
+				mandelbox.frag
 SHADER_SPVS := $(patsubst $(SHADER_DIR)/%, $(SPVS_DIR)/%.spv, $(addprefix $(SHADER_DIR)/, $(SHADER_SRCS)))
 
 
@@ -73,7 +73,8 @@ INCLUDES	:= -I$(INCLUDE_DIR) \
 			   -I$(VOLK_DEP_DIR) \
 			   -I../include \
 			   -isystem$(VMA_DEP_DIR)/include
-LDFLAGS		:= -lm -ldl -lpthread -lwayland-client -lwayland-egl -lwayland-cursor -lxkbcommon
+LDFLAGS		:= -lm -ldl -lpthread -lwayland-client -lwayland-egl -lwayland-cursor -lxkbcommon -ldecor-0
+DEBUG_FLAG	:= -DDEBUG
 
 ifdef GLSLC_SYSTEM
   GLSLC	:= $(GLSLC_SYSTEM)
@@ -82,6 +83,9 @@ else
 endif
 
 all: $(TARGET)
+
+debug: CXXFLAGS += ${DEBUG_FLAG}
+debug: clean all
 
 $(TARGET): $(SDL_LIB) $(SHADER_SPVS) $(OBJS)
 	@printf "$(BOLD)Linking $(TARGET)$(RESET)\n"
@@ -189,9 +193,9 @@ $(SDL_LIB) : $(SDL_DEP_DIR) | $(OBJS_DIR)
 		-DSDL_LIBC=ON                       \
 		-DSDL_CLOCK_GETTIME=ON              \
 		-DSDL_WAYLAND=ON                    \
-		-DSDL_WAYLAND_SHARED=OFF            \
-		-DSDL_WAYLAND_LIBDECOR=OFF          \
-		-DSDL_WAYLAND_LIBDECOR_SHARED=OFF   \
+		-DSDL_WAYLAND_SHARED=ON            \
+		-DSDL_WAYLAND_LIBDECOR=ON          \
+		-DSDL_WAYLAND_LIBDECOR_SHARED=ON   \
 		-DSDL_X11=OFF                       \
 		-DSDL_AUDIO=OFF                     \
 		-DSDL_ALSA=OFF                      \
