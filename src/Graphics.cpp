@@ -17,12 +17,6 @@
 #include "base.vert.h"
 #include "mandelbox.frag.h"
 
-struct PushConstantsFrag
-{
-	glm::vec3	pos;
-	glm::quat	rot;
-};
-
 static inline void	chk(VkResult result)
 {
 	if (result != VK_SUCCESS)
@@ -718,7 +712,9 @@ void	Graphics::render(graphics_options& opt, const double& deltaTime)
 
 	PushConstantsFrag constants = {
 		.pos = opt.cam.pos,
-		.rot = opt.cam.rot
+		._pad = 0.0,
+		.rot = opt.cam.rot,
+		.screenSize = _windowSize
 	};
 	vkCmdPushConstants(cmdBuff, _pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(constants), &constants);
 	
@@ -798,7 +794,13 @@ void	Graphics::_getMouseInput(graphics_options& opt, const double& deltaTime)
 		}
 		else if (event.type == SDL_EVENT_MOUSE_MOTION)
 		{
-			// TODO - Change the rotation of the camera (opt.cam)
+			float	yaw = -event.motion.xrel * opt.sensitivity;
+			float	pitch = -event.motion.yrel * opt.sensitivity;
+
+			glm::quat	quatYaw = glm::angleAxis(yaw, glm::vec3(0.0f, -1.0f, 0.0f));
+			glm::quat	quatPitch = glm::angleAxis(pitch, opt.cam.rot * glm::vec3(1.0, 0.0, 0.0));
+
+			opt.cam.rot = glm::normalize(quatYaw * opt.cam.rot * quatPitch);
 		}
 	}
 }

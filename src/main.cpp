@@ -5,7 +5,7 @@ int	main(int argc, char** argv)
 {
 	(void)argc;
 	(void)argv;
-	Graphics	vk;
+	Graphics			vk;
 	graphics_options	opt;
 
 	while (opt.shouldRun)
