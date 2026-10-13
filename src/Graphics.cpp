@@ -593,7 +593,7 @@ void	Graphics::_createPipelineMandelBox(void)
 	vkDestroyShaderModule(_device, shaderFragment, nullptr);
 }
 
-void	Graphics::render(graphics_options& opt, const double& deltaTime)
+void	Graphics::render(graphics_options& opt, const float& deltaTime)
 {
 	vkWaitForFences(_device, 1, &_fenInFlight[_currentFrame], VK_TRUE, UINT64_MAX);
 	vkResetFences(_device, 1, &_fenInFlight[_currentFrame]);
@@ -772,7 +772,7 @@ void	Graphics::render(graphics_options& opt, const double& deltaTime)
 	_currentFrame = (_currentFrame + 1) % _maxFramesInFlight;
 }
 
-void	Graphics::_getMouseInput(graphics_options& opt, const double& deltaTime)
+void	Graphics::_getMouseInput(graphics_options& opt, const float& deltaTime)
 {
 	(void)deltaTime;
 
@@ -780,16 +780,22 @@ void	Graphics::_getMouseInput(graphics_options& opt, const double& deltaTime)
 	while (SDL_PollEvent(&event))
 	{
 		if (event.type == SDL_EVENT_WINDOW_FOCUS_LOST)
+		{
 			SDL_SetWindowRelativeMouseMode(_window, false);
+			opt.shouldRerender = true;
+		}
 		else if (event.type == SDL_EVENT_WINDOW_FOCUS_GAINED)
+		{
 			SDL_SetWindowRelativeMouseMode(_window, true);
+			opt.shouldRerender = true;
+		}
 		else if (event.type == SDL_EVENT_QUIT)
 		{
 			opt.shouldRun = false;
 			break;
 		}
 		else if (event.type == SDL_EVENT_MOUSE_WHEEL)
-		{	
+		{
 			opt.forwardSpeed -= event.wheel.y;
 		}
 		else if (event.type == SDL_EVENT_MOUSE_MOTION)
@@ -798,25 +804,46 @@ void	Graphics::_getMouseInput(graphics_options& opt, const double& deltaTime)
 			float	pitch = -event.motion.yrel * opt.sensitivity;
 
 			glm::quat	quatYaw = glm::angleAxis(yaw, glm::vec3(0.0f, -1.0f, 0.0f));
-			glm::quat	quatPitch = glm::angleAxis(pitch, opt.cam.rot * glm::vec3(1.0, 0.0, 0.0));
+			glm::quat	quatPitch = glm::angleAxis(pitch, glm::vec3(1.0, 0.0, 0.0));
 
 			opt.cam.rot = glm::normalize(quatYaw * opt.cam.rot * quatPitch);
+			opt.shouldRerender = true;
 		}
 	}
 }
 
-void	Graphics::_getKeyboardInput(graphics_options& opt, const double& deltaTime)
+void	Graphics::_getKeyboardInput(graphics_options& opt, const float& deltaTime)
 {
-	(void)deltaTime;
+	glm::vec3	direction(0.0f, 0.0f, 0.0f);
 
 	SDL_PumpEvents();
 	if (_keyboardState[SDL_SCANCODE_ESCAPE])
 		SDL_SetWindowRelativeMouseMode(_window, false);
 	if (_keyboardState[SDL_SCANCODE_Q])
 		opt.shouldRun = false;
+
+	if (_keyboardState[SDL_SCANCODE_W])
+		direction += glm::vec3(0.0f, 0.0f, 1.0f);
+	if (_keyboardState[SDL_SCANCODE_S])
+		direction += glm::vec3(0.0f, 0.0f, -1.0f);
+	if (_keyboardState[SDL_SCANCODE_A])
+		direction += glm::vec3(-1.0f, 0.0f, 0.0f);
+	if (_keyboardState[SDL_SCANCODE_D])
+		direction += glm::vec3(1.0f, 0.0f, 0.0f);
+	if (_keyboardState[SDL_SCANCODE_LCTRL])
+		direction += glm::vec3(0.0f, 1.0f, 0.0f);
+	if (_keyboardState[SDL_SCANCODE_SPACE])
+		direction += glm::vec3(0.0f, -1.0f, 0.0f);
+
+	if (direction != glm::vec3(0.0f))
+	{
+		direction = glm::normalize(direction);
+		opt.shouldRerender = true;
+	}
+	opt.cam.pos += (opt.cam.rot * direction) * opt.forwardSpeed * deltaTime;
 }
 
-void	Graphics::handleInputs(graphics_options& opt, const double& deltaTime)
+void	Graphics::handleInputs(graphics_options& opt, const float& deltaTime)
 {
 	_getMouseInput(opt, deltaTime);
 	_getKeyboardInput(opt, deltaTime);

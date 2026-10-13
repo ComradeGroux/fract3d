@@ -66,13 +66,13 @@ class Graphics
 
 		void	_renderUI(VkCommandBuffer& cmdBuff);
 
-		void	_getMouseInput(graphics_options& opt, const double& deltaTime);
-		void	_getKeyboardInput(graphics_options& opt, const double& deltaTime);
+		void	_getMouseInput(graphics_options& opt, const float& deltaTime);
+		void	_getKeyboardInput(graphics_options& opt, const float& deltaTime);
 
 	public:
 		Graphics(void);
 		~Graphics(void);
 
-		void	render(graphics_options& opt, const double& deltaTime);
-		void	handleInputs(graphics_options& opt, const double& deltaTime);
+		void	render(graphics_options& opt, const float& deltaTime);
+		void	handleInputs(graphics_options& opt, const float& deltaTime);
 };
