@@ -60,6 +60,7 @@ class Graphics
 
 		static SDL_HitTestResult	_hitTestCallback(SDL_Window* win, const SDL_Point* area, void* data);
 
+		void	_prepareShaders(void);
 		void	_createPipelines(void);
 		void	_createBasePipeline(E_Pipeline fract, const VkPipelineShaderStageCreateInfo* shaderStages);
 		void	_createPipelineMandelBox(void);

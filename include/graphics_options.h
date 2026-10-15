@@ -7,7 +7,7 @@
 
 struct	PushConstantsFrag
 {
-	glm::vec3	pos = { 0.0, 0.0, -3.0 };
+	glm::vec3	pos = { 0.0, 0.0, -15.0 };
 	float		_pad = 0.0;
 	glm::quat	rot = { 1.0, 0.0, 0.0, 0.0 };
 	glm::vec2	screenSize = { 0, 0 };

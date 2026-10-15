@@ -87,7 +87,7 @@ all: $(TARGET)
 debug: CXXFLAGS += ${DEBUG_FLAG}
 debug: clean all
 
-$(TARGET): $(SDL_LIB) $(SHADER_SPVS) $(OBJS)
+$(TARGET): $(SDL_LIB) $(OBJS) $(GLSLC)
 	@printf "$(BOLD)Linking $(TARGET)$(RESET)\n"
 	@$(CXX) $(OBJS) $(SDL_LIB) $(LDFLAGS) -o $@
 	@printf "$(GREEN)  ✓ $(TARGET) ready$(RESET)\n"
@@ -105,23 +105,14 @@ $(OBJS_DIR)/.compile_start: $(SRCS) | $(OBJS_DIR)/.fractal_start
 	@touch $@
 $(OBJS_DIR)/%.o: %.cpp | $(OBJS_DIR)
 	@printf "$(GRAY)  $<...$(RESET)" && \
-	 $(CXX) $(CXXFLAGS) $(INCLUDES) -I$(SPVS_HEADER_DIR) -c $< -o $@ && \
+	 $(CXX) $(CXXFLAGS) $(INCLUDES) \
+		-DGLSLC_PATH='"$(GLSLC)"' \
+		-DSHADER_OUTPUT_DIR='"$(SPVS_DIR)"' \
+		-c $< -o $@ && \
 	 printf "$(ERASE)$(GREEN)  ✓ $<$(RESET)\n"\
-
-$(SPVS_DIR):
-	@mkdir -p $@
-$(SPVS_HEADER_DIR):
-	@mkdir -p $@
-	@printf "$(BOLD)Compiling SPIRV shaders$(RESET)\n"
-$(SPVS_DIR)/%.spv: $(SHADER_DIR)/% | glslc_ready $(SPVS_DIR) $(SPVS_HEADER_DIR)
-	@printf "$(GRAY)  Compiling shader $<...$(RESET)" && \
-	 $(GLSLC) $< -o $@ && \
-	 xxd -i $@ > $(addsuffix ".h", $(addprefix $(SPVS_HEADER_DIR)/, $(notdir $<))) && \
-	 printf "$(ERASE)$(GREEN)  ✓ $<$(RESET)\n"
 
 glslc_ready:
 ifdef GLSLC_SYSTEM
-	@printf "$(GREEN)  ✓ glslc found: $(GLSLC_SYSTEM)$(RESET)\n"
 else
 	@if [ ! -x "$(GLSLC_LOCAL)" ]; then \
 		$(MAKE) $(GLSLC_LOCAL) --no-print-directory; \

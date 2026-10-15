@@ -9,13 +9,22 @@
 #include <SDL3/SDL_vulkan.h>
 #include <SDL3/SDL_log.h>
 
+#include <array>
+#include <filesystem>
 #include <stdexcept>
 #include <vector>
 #include <fstream>
 #include <iostream>
 
-#include "base.vert.h"
-#include "mandelbox.frag.h"
+constexpr uint32_t	MAGIC_SPIRV = 0x07230203;
+struct ShaderFile {
+	const char*	source;
+	const char*	binary;
+};
+constexpr std::array<ShaderFile, 2>	SHADERS = {{
+	{ "shader/base.vert", "build/shaders-spv/base.vert.spv" },
+	{ "shader/mandelbox.frag", "build/shaders-spv/mandelbox.frag.spv" }
+}};
 
 static inline void	chk(VkResult result)
 {
@@ -43,6 +52,7 @@ Graphics::Graphics(void)
 	_createSwapchain();
 	_createSwapchainImages();
 	_createSyncObjects();
+	_prepareShaders();
 	_createPipelines();
 	_keyboardState = SDL_GetKeyboardState(nullptr);
 	SDL_SetWindowRelativeMouseMode(_window, true);
@@ -415,6 +425,121 @@ void	Graphics::_createSyncObjects(void)
 	}
 }
 
+static bool	isValidSPIRV(const std::filesystem::path& path)
+{
+	std::error_code		errcode;
+	const unsigned long	size = std::filesystem::file_size(path, errcode);
+
+	if (errcode || size < 20 || size % sizeof(uint32_t) != 0)
+		return false;
+
+	std::ifstream	file(path, std::ios::binary);
+	uint32_t		magic = 0;
+
+	file.read(reinterpret_cast<char*>(&magic), sizeof(magic));
+
+	return file.good() && magic == MAGIC_SPIRV;
+}
+
+static bool	shaderNeedRecompilation(const std::filesystem::path& source, const std::filesystem::path& binary)
+{
+	std::error_code	errcode;
+
+	if (!std::filesystem::exists(binary, errcode) || errcode)
+		return true;
+
+	if (!isValidSPIRV(binary))
+		return true;
+
+	const std::filesystem::file_time_type	sourceTime = std::filesystem::last_write_time(source, errcode);
+	if (errcode)
+		throw std::runtime_error("Impossible to read: " + source.string());
+	const std::filesystem::file_time_type	binaryTime = std::filesystem::last_write_time(binary, errcode);
+	if (errcode)
+		return true;
+
+	return sourceTime > binaryTime;
+}
+
+static std::string	quoteShell(const std::string& arg)
+{
+	std::string result = "'";
+
+	for (char c : arg)
+	{
+		if (c == '\'')
+			result += "'\\''";
+		else
+			result += c;
+	}
+
+	result += "'";
+	return result;
+}
+
+static void	compileShader(const std::filesystem::path& source, const std::filesystem::path& binary)
+{
+	const std::filesystem::path	tmp = binary.string() + ".tmp";
+	std::error_code				errcode;
+	std::filesystem::remove(tmp, errcode);
+
+	const std::string	command = quoteShell(GLSLC_PATH) + " " + quoteShell(source.string()) + " -o " + quoteShell(tmp.string());
+	std::cout << "[Shader] Compilation : " << source << std::endl;
+
+	if (std::system(command.c_str()) != 0)
+	{
+		std::filesystem::remove(tmp, errcode);
+		throw std::runtime_error("Failed during the compilation");
+	}
+
+	if (!isValidSPIRV(tmp))
+	{
+		std::filesystem::remove(tmp, errcode);
+		throw std::runtime_error("Invalid SPIR-V generated");
+	}
+
+	std::filesystem::rename(tmp, binary);
+}
+
+static std::vector<uint32_t>	readSPIRV(const std::filesystem::path& path)
+{
+	std::ifstream	file(path, std::ios::binary | std::ios::ate);
+
+	if (!file)
+		throw std::runtime_error("Impossible to open the shader: " + path.string());
+
+	const std::streampos	end = file.tellg();
+	if (end <= 0 || static_cast<uint64_t>(end) % sizeof(uint32_t) != 0)
+		throw std::runtime_error("SPIR-V size invalid: " + path.string());
+
+	std::vector<uint32_t>	codeSpirV(static_cast<size_t>(end) / sizeof(uint32_t));
+
+	file.seekg(0);
+	file.read(reinterpret_cast<char*>(codeSpirV.data()), static_cast<std::streamsize>(end));
+
+	if (!file || codeSpirV.front() != MAGIC_SPIRV)
+		throw std::runtime_error("Invalid SPIR-V read : " + path.string());
+
+	return codeSpirV;
+}
+
+void	Graphics::_prepareShaders(void)
+{
+	std::filesystem::create_directories(SHADER_OUTPUT_DIR);
+
+	for (const auto& shader : SHADERS)
+	{
+		const std::filesystem::path	source = shader.source;
+		const std::filesystem::path	binary = shader.binary;
+
+		if (!std::filesystem::exists(source))
+			throw std::runtime_error("Impossible to found " + source.string());
+
+		if (shaderNeedRecompilation(source, binary))
+			compileShader(source, binary);
+	}
+}
+
 void	Graphics::_createPipelines(void)
 {
 	VkPushConstantRange	pushConstantRange = {
@@ -554,18 +679,22 @@ void	Graphics::_createBasePipeline(E_Pipeline fract, const VkPipelineShaderStage
 
 void	Graphics::_createPipelineMandelBox(void)
 {
+	const std::vector<uint32_t>	vertexCode = readSPIRV("build/shaders-spv/base.vert.spv");
+
 	VkShaderModuleCreateInfo	shaderCI = {
 		.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
 		.pNext = VK_NULL_HANDLE,
 		.flags = {},
-		.codeSize = build_shaders_spv_base_vert_spv_len,
-		.pCode = reinterpret_cast<uint32_t *>(build_shaders_spv_base_vert_spv)
+		.codeSize = vertexCode.size() * sizeof(uint32_t),
+		.pCode = vertexCode.data()
 	};
 	VkShaderModule	shaderVertex;
 	chk(vkCreateShaderModule(_device, &shaderCI, nullptr, &shaderVertex));
 
-	shaderCI.codeSize = build_shaders_spv_mandelbox_frag_spv_len;
-	shaderCI.pCode = reinterpret_cast<uint32_t *>(build_shaders_spv_mandelbox_frag_spv);
+	const std::vector<uint32_t>	fragCode = readSPIRV("build/shaders-spv/mandelbox.frag.spv");
+
+	shaderCI.codeSize = fragCode.size() * sizeof(uint32_t);
+	shaderCI.pCode = fragCode.data();
 	VkShaderModule	shaderFragment;
 	chk(vkCreateShaderModule(_device, &shaderCI, nullptr, &shaderFragment));
 
@@ -796,7 +925,9 @@ void	Graphics::_getMouseInput(graphics_options& opt, const float& deltaTime)
 		}
 		else if (event.type == SDL_EVENT_MOUSE_WHEEL)
 		{
-			opt.forwardSpeed -= event.wheel.y;
+			opt.forwardSpeed -= (event.wheel.y / 100.0f);
+			if (opt.forwardSpeed < 0.0f)
+				opt.forwardSpeed = 0.0001f;
 		}
 		else if (event.type == SDL_EVENT_MOUSE_MOTION)
 		{
