@@ -340,10 +340,30 @@ void	Graphics::_createSwapchain(void)
 			.height	= static_cast<uint32_t>(_windowSize.y)
 		};
 
-	uint32_t			surfaceCount = 1;
-	VkSurfaceFormatKHR	surfaceFormat;
-	vkGetPhysicalDeviceSurfaceFormatsKHR(_physicalDevice, _surface, &surfaceCount, &surfaceFormat);
-	_imageFormat = surfaceFormat.format;
+	uint32_t			surfaceCount = 0;
+	vkGetPhysicalDeviceSurfaceFormatsKHR(_physicalDevice, _surface, &surfaceCount, VK_NULL_HANDLE);
+	std::vector<VkSurfaceFormatKHR>	surfaceFormat(surfaceCount);
+	vkGetPhysicalDeviceSurfaceFormatsKHR(_physicalDevice, _surface, &surfaceCount, surfaceFormat.data());
+	uint32_t	i = 0;
+	int32_t		j = -1;
+	for (; i < surfaceCount; i++)
+	{
+		if (surfaceFormat[i].colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
+		{
+			if (surfaceFormat[i].format == VK_FORMAT_B8G8R8A8_SRGB)
+				break;
+			else if (surfaceFormat[i].format == VK_FORMAT_R8G8B8A8_SRGB)
+				j = i;
+		}
+	}
+	if (i >= surfaceCount)
+	{
+		if (j >= 0)
+			i = j;
+		else
+			i = 0;
+	}
+	_imageFormat = surfaceFormat[i].format;
 
 	VkSwapchainCreateInfoKHR	swapchainCI{
 		.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
@@ -352,17 +372,17 @@ void	Graphics::_createSwapchain(void)
 		.surface = _surface,
 		.minImageCount = surfaceCaps.minImageCount,
 		.imageFormat = _imageFormat,
-		.imageColorSpace = surfaceFormat.colorSpace,
+		.imageColorSpace = surfaceFormat[i].colorSpace,
 		.imageExtent{ .width = swapchainExtent.width, .height = swapchainExtent.height },
 		.imageArrayLayers = 1,
 		.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
 		.imageSharingMode = {},
-		.queueFamilyIndexCount = 1,
+		.queueFamilyIndexCount = 0,
 		.pQueueFamilyIndices = {},
 		.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
 		.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
 		.presentMode = VK_PRESENT_MODE_FIFO_KHR,
-		.clipped = VK_FALSE,
+		.clipped = VK_TRUE,
 		.oldSwapchain = {}
 	};
 	chk(vkCreateSwapchainKHR(_device, &swapchainCI, nullptr, &_swapchain));
@@ -843,7 +863,8 @@ void	Graphics::render(graphics_options& opt, const float& deltaTime)
 		.pos = opt.cam.pos,
 		._pad = 0.0,
 		.rot = opt.cam.rot,
-		.screenSize = _windowSize
+		.screenSize = _windowSize,
+		.theme = opt.theme
 	};
 	vkCmdPushConstants(cmdBuff, _pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(constants), &constants);
 	
@@ -971,7 +992,10 @@ void	Graphics::_getKeyboardInput(graphics_options& opt, const float& deltaTime)
 		direction = glm::normalize(direction);
 		opt.shouldRerender = true;
 	}
-	opt.cam.pos += (opt.cam.rot * direction) * opt.forwardSpeed * deltaTime;
+	if (_keyboardState[SDL_SCANCODE_LSHIFT])
+		opt.cam.pos += (opt.cam.rot * direction) * opt.forwardSpeed * 4.0f * deltaTime;
+	else
+		opt.cam.pos += (opt.cam.rot * direction) * opt.forwardSpeed * deltaTime;
 }
 
 void	Graphics::handleInputs(graphics_options& opt, const float& deltaTime)
