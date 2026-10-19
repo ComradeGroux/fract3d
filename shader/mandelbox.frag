@@ -17,20 +17,18 @@ const float	fixedRadius = 1.0;
 
 
 const int	NB_ITER_SCALAR = 10;
-// struct theme {
-// 	const vec3	MAIN_COLOR;
-// 	const vec3	SECOND_COLOR;
-// 	const vec3	SHADOW_COLOR;
-// };
 const float	LOW_T = 0.0;
 const float	HIGH_T = 1.0;
 const float	TRAP_RADIUS = 1.5;
-const float	CONSTRAST = 0.4;
+const float	CONSTRAST = 0.3;
 
 const vec3	MAIN_COLOR = vec3(0.56, 0.38, 0.14);
 const vec3	SECOND_COLOR = vec3(0.31, 0.10, 0.05);
-const vec3	SHADOW_COLOR = vec3(0.224, 0.10, 0.05);
 
+const vec3	MAIN_DIR = normalize(vec3(0.3, 0.8, -1.0));
+
+const vec3	FILL_DIR = normalize(vec3(-0.7, -0.4, 0.6));
+const vec3	FILL_COLOR = vec3(0.45, 0.55, 0.85) * 0.35;
 
 const int	MAX_STEPS = 512;
 const float	MAX_DIST = 100.0;
@@ -42,6 +40,16 @@ const float	DETAIL_C = 4.0;
 const int	MIN_ITER = 4;
 const int	MAX_ITER = 30;
 const float	ESCAPE_R2 = 1.0e6;
+
+const float	AO_H0 = 0.06;
+const float	AO_CALIB = 0.35;
+const float	AO_K = 3.5;
+const float	AO_W[5] = float[5](0.30, 0.27, 0.20, 0.14, 0.09);
+const vec3	UP = vec3(0.0, -1.0, 0.0);
+const vec3	SKY_COLOR = vec3(0.10, 0.12, 0.18);
+const vec3	GROUND_COLOR = vec3(0.14, 0.08, 0.045);
+const vec3	AO_TINT = vec3(0.34, 0.13, 0.09);
+const vec3	KEY_COLOR = vec3(1.0, 0.92, 0.80) * 0.85;
 
 struct ray {
 	vec3	ro;
@@ -73,9 +81,8 @@ ray	calculateRayDirection()
 	return test;
 }
 
-vec3	basicLambert(vec3 normal)
+vec3	basicLambert(vec3 normal, vec3 lightDir)
 {
-	vec3	lightDir = normalize(vec3(0.3, 0.8, -1.0));
 	return vec3(max(dot(normal, lightDir), 0.0));
 }
 
@@ -137,9 +144,9 @@ vec3	calcNormal(vec3 p, float eps, float n)
 	float		h = 0.1 * eps;
 
 	return normalize(k.xyy * (distanceEstimator(p + k.xyy * h, n).dist)
-				   + k.yyx * (distanceEstimator(p + k.yyx * h, n).dist)
-				   + k.yxy * (distanceEstimator(p + k.yxy * h, n).dist)
-				   + k.xxx * (distanceEstimator(p + k.xxx * h, n).dist));
+				+ k.yyx * (distanceEstimator(p + k.yyx * h, n).dist)
+				+ k.yxy * (distanceEstimator(p + k.yxy * h, n).dist)
+				+ k.xxx * (distanceEstimator(p + k.xxx * h, n).dist));
 }
 
 float	calcScalarT(vec3 p)
@@ -173,6 +180,33 @@ float	calcScalarT(vec3 p)
 
 	// return smoothstep(LOW_T, HIGH_T, trapMin);
 	return 1 - exp(-trapMin / CONSTRAST);
+}
+
+float	calcAO(vec3 p, vec3 normal, float eps)
+{
+	float	occ = 0.0;
+	float	h = AO_H0;
+
+	for (int i = 0; i < 5; i++)
+	{
+		vec3	q = p + normal * h;
+		float	e = max(eps, 0.02 * h);
+		float	n = iterationCount(e);
+		float	d = (distanceEstimator(q, n).dist);
+
+		float	o = clamp((1 - d / (AO_CALIB * h)), 0.0, 1.0);
+		occ += AO_W[i] * o;
+
+		h *= 2.0;
+	}
+	return clamp(1 - AO_K * occ, 0.0, 1.0);
+}
+
+vec3	ambiantLight(vec3 normal, float ao)
+{
+	float	k = 0.5 + 0.5 * dot(normal, UP);
+	vec3	amb = mix(GROUND_COLOR, SKY_COLOR, k);
+	return amb * ao;
 }
 
 float	hash12(vec2 p)
@@ -247,15 +281,20 @@ void	main()
 	d = distanceEstimator(p, n);
 
 	vec3	normal = calcNormal(p, eps, n);
+	float	occ = calcAO(p, normal, eps);
+	vec3	amb = ambiantLight(normal, occ);
+	vec3	key = KEY_COLOR * basicLambert(normal, MAIN_DIR) * (0.35 + 0.65 * occ);
+	vec3	fill = FILL_COLOR * basicLambert(normal, FILL_DIR) * (0.5 + 0.5 * occ);
+	vec3	tint = mix(AO_TINT, vec3(1.0), occ);
+	vec3	light = (key + fill + amb) * tint;
 
 	float	scalarTColor = calcScalarT(p);
 	vec3	color = mix(SECOND_COLOR, MAIN_COLOR, scalarTColor);
-	vec3	light = basicLambert(normal);
 
-	// fragColor = vec4(vec3(scalarTColor), 1.0);
-	// fragColor = vec4(dither(vec3(scalarTColor)), 1.0);
-	// fragColor = vec4(color, 1.0);
-	fragColor = vec4(dither(vec3(color)), 1.0);
-	// fragColor = vec4(color * light * 0.9 + 0.02, 1.0);
-	// fragColor = vec4(dither(color * light) * 0.9 + 0.02, 1.0);
+	// fragColor = vec4(dither(vec3(color * fill * 4.0)), 1.0);
+	// fragColor = vec4(dither(vec3(amb)), 1.0);
+	// fragColor = vec4(dither(vec3(color * amb)), 1.0);
+	// fragColor = vec4(dither(vec3(color)), 1.0);
+	// fragColor = vec4(color * light, 1.0);
+	fragColor = vec4(dither(color * light), 1.0);
 }
