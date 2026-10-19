@@ -5,6 +5,7 @@ layout(push_constant) uniform uPushConstant
 	vec3	pos;
 	vec4	rot;
 	vec2	screenSize;
+	int		theme;
 } pc;
 
 layout(location = 0) out vec4 fragColor;
@@ -15,9 +16,20 @@ const float	minRadius = 0.5;
 const float	fixedRadius = 1.0;
 
 
-const vec3	MAIN_COLOR = vec3(0.776, 0.647, 0.408);
-const vec3	SECOND_COLOR = vec3(0.596, 0.345, 0.239);
-const vec3	SHADOW_COLOR = vec3(0.224, 0.145, 0.122);
+const int	NB_ITER_SCALAR = 10;
+// struct theme {
+// 	const vec3	MAIN_COLOR;
+// 	const vec3	SECOND_COLOR;
+// 	const vec3	SHADOW_COLOR;
+// };
+const float	LOW_T = 0.0;
+const float	HIGH_T = 1.0;
+const float	TRAP_RADIUS = 1.5;
+const float	CONSTRAST = 0.4;
+
+const vec3	MAIN_COLOR = vec3(0.56, 0.38, 0.14);
+const vec3	SECOND_COLOR = vec3(0.31, 0.10, 0.05);
+const vec3	SHADOW_COLOR = vec3(0.224, 0.10, 0.05);
 
 
 const int	MAX_STEPS = 512;
@@ -97,10 +109,11 @@ de	distanceEstimator(vec3 p, float n)
 		oldDr = dr;
 
 		z = clamp(z, -1.0, 1.0) * 2.0 - z;
+
 		r2 = dot(z, z);
-		if (r2 < minRadius * minRadius)
+		if (sqrt(r2) < minRadius)
 			factor = (fixedRadius * fixedRadius) / (minRadius * minRadius);
-		else if (r2 < fixedRadius * fixedRadius)
+		else if (sqrt(r2) < fixedRadius)
 			factor = (fixedRadius * fixedRadius) / r2;
 		else
 			factor = 1.0;
@@ -129,10 +142,60 @@ vec3	calcNormal(vec3 p, float eps, float n)
 				   + k.xxx * (distanceEstimator(p + k.xxx * h, n).dist));
 }
 
+float	calcScalarT(vec3 p)
+{
+	vec3	z = p;
+	float	r2;
+	float	factor;
+	int		i = 0;
+
+	float	trapMin = 1e4;
+	for (; i < NB_ITER_SCALAR; i++)
+	{
+		z = clamp(z, -1.0, 1.0) * 2.0 - z;
+		r2 = dot(z, z);
+
+		trapMin = min(trapMin, abs(length(z) - TRAP_RADIUS));
+
+		if (r2 < minRadius * minRadius)
+			factor = (fixedRadius * fixedRadius) / (minRadius * minRadius);
+		else if (r2 < fixedRadius * fixedRadius)
+			factor = (fixedRadius * fixedRadius) / r2;
+		else
+			factor = 1.0;
+		z *= factor;
+
+		z = scale * z + p;
+
+		if (dot(z, z) > ESCAPE_R2)
+			break;
+	}
+
+	// return smoothstep(LOW_T, HIGH_T, trapMin);
+	return 1 - exp(-trapMin / CONSTRAST);
+}
+
+float	hash12(vec2 p)
+{
+	vec3	p3 = fract(vec3(p.xyx) * 0.1031);
+	p3 += dot(p3, p3.yzx + 33.33);
+	return fract((p3.x + p3.y) * p3.z);
+}
+
+vec3	dither(vec3 linearColor)
+{
+	vec3	enc = pow(linearColor, vec3(1.0 / 2.2));
+	float	n = hash12(gl_FragCoord.xy) + hash12(gl_FragCoord.xy + 17.0) - 1.0;
+	enc += n / 255.0;
+	return pow(max(enc, 0.0), vec3(2.2));
+}
+
 void	main()
 {
 	ray		r = calculateRayDirection();
 	float	t = 0.0;
+	float	oldT = 0.0;
+	float	g = -1.0;
 	de		d;
 	float	eps = EPS_MIN;
 	float	n = MIN_ITER;
@@ -154,6 +217,9 @@ void	main()
 			break;
 		}
 
+		oldT = t;
+		g = d.dist - eps;
+
 		t += d.dist * STEP_SAFETY;
 		if (t > MAX_DIST)
 		{
@@ -167,8 +233,12 @@ void	main()
 
 	if (!hit)
 	{
-		fragColor = vec4(0.05, 0.05, 0.05, 1.0);
+		fragColor = vec4(0.01, 0.01, 0.01, 1.0);
 		return;
+	}
+	else if (g >= 0.0 && t != 0.0 && d.dist < eps)
+	{
+		t = oldT + (g / (g - (d.dist - eps))) * (t - oldT);
 	}
 
 	p = r.ro + r.rd * t;
@@ -178,9 +248,14 @@ void	main()
 
 	vec3	normal = calcNormal(p, eps, n);
 
-	float	iterFactor = smoothstep(4.0, 18.0, float(d.iter));
-	vec3	color = mix(SECOND_COLOR, MAIN_COLOR, iterFactor);
+	float	scalarTColor = calcScalarT(p);
+	vec3	color = mix(SECOND_COLOR, MAIN_COLOR, scalarTColor);
 	vec3	light = basicLambert(normal);
 
-	fragColor = vec4(color * light * 0.9 + 0.1, 1.0);
+	// fragColor = vec4(vec3(scalarTColor), 1.0);
+	// fragColor = vec4(dither(vec3(scalarTColor)), 1.0);
+	// fragColor = vec4(color, 1.0);
+	fragColor = vec4(dither(vec3(color)), 1.0);
+	// fragColor = vec4(color * light * 0.9 + 0.02, 1.0);
+	// fragColor = vec4(dither(color * light) * 0.9 + 0.02, 1.0);
 }

@@ -37,6 +37,7 @@ AI (Claude) is used strictly as a **support tool**, the way you'd use documentat
 - 🐛 Debugging help — understanding compiler/linker errors, Vulkan validation layer messages, build issues
 - 📚 Explaining concepts — C++ features, Vulkan API design, graphics programming theory
 - 📦 Guidance on third-party libraries (SDL3, VMA, volk, GLM, shaderc...) and how to use them correctly
+- 📝 Writting this README
 
 **No AI-generated code is used in this project.** No feature, function, or implementation was written by an AI — every line is typed and understood by me. If I ever change this policy, this section will be updated to reflect it.
 
@@ -47,7 +48,7 @@ AI (Claude) is used strictly as a **support tool**, the way you'd use documentat
 - ⚡ **Modern Vulkan 1.3** pipeline (dynamic rendering, synchronization2, no render passes/framebuffers)
 - 🪟 Windowing and input via **SDL3**, with native **Wayland** support
 - 🧠 Efficient GPU memory management via **AMD VMA**
-- 🧩 Shaders compiled to SPIR-V at build time and embedded directly into the binary
+- 🧩 Shaders compiled to SPIR-V at run time
 - 🛠️ Self-contained build system — dependencies are fetched and compiled automatically, no manual setup required
 
 ## Demo
@@ -64,7 +65,8 @@ AI (Claude) is used strictly as a **support tool**, the way you'd use documentat
 |---|---|
 | `W` `A` `S` `D` | Move the camera |
 | Mouse | Rotate the camera |
-| Scroll wheel | Zoom in / out |
+| Scroll wheel | Increase/Decrease the movement speed |
+| Left shift (press) | Increase the movement speed |
 | `Esc` | Quit |
 
 > Controls are subject to change as the project evolves — check back here for updates.
@@ -117,11 +119,11 @@ Run it with:
 
 ```
 fract3d/
-├── src/                 # C++ source files
-├── include/             # Project headers
-├── shader/              # GLSL shader sources (.vert / .frag)
-├── lib/                 # Fetched third-party dependencies (auto-generated)
 ├── build/               # Build artifacts: objects, compiled SPIR-V, SDL, shaderc (auto-generated)
+├── include/             # Project headers
+├── lib/                 # Fetched third-party dependencies (auto-generated)
+├── shader/              # GLSL shader sources (.vert / .frag)
+├── src/                 # C++ source files
 └── Makefile
 ```
 
@@ -142,7 +144,7 @@ fract3d/
 - [ ] Adjustable rendering/quality parameters at runtime
 - [ ] Lighting and shading improvements
 - [ ] On-screen UI for tweaking parameters live
-- [ ] Configurable camera and movement speed
+- [X] Configurable camera and movement speed
 
 ## License
 

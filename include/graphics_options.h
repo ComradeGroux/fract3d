@@ -11,6 +11,7 @@ struct	PushConstantsFrag
 	float		_pad = 0.0;
 	glm::quat	rot = { 1.0, 0.0, 0.0, 0.0 };
 	glm::vec2	screenSize = { 0, 0 };
+	int			theme = 0;
 };
 
 struct graphics_options
@@ -20,4 +21,5 @@ struct graphics_options
 	float						forwardSpeed = 0.5f;
 	float						sensitivity = 0.001f;
 	PushConstantsFrag			cam;
+	int							theme = 0;
 };
