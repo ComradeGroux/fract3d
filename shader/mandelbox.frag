@@ -10,6 +10,8 @@ layout(push_constant) uniform uPushConstant
 
 layout(location = 0) out vec4 fragColor;
 
+const vec3	PAL[4] = vec3[4](vec3(0.31, 0.10, 0.05), vec3(0.46, 0.27, 0.09), vec3(0.56, 0.38, 0.14), vec3(0.91, 0.61, 0.22));
+const float	PAL_POS[4] = float[4](0.0, 0.35, 0.7, 0.9);
 
 const float	scale = 2.0;
 const float	minRadius = 0.5;
@@ -17,18 +19,13 @@ const float	fixedRadius = 1.0;
 
 
 const int	NB_ITER_SCALAR = 10;
-const float	LOW_T = 0.0;
-const float	HIGH_T = 1.0;
 const float	TRAP_RADIUS = 1.5;
 const float	CONSTRAST = 0.3;
 
-const vec3	MAIN_COLOR = vec3(0.56, 0.38, 0.14);
-const vec3	SECOND_COLOR = vec3(0.31, 0.10, 0.05);
+const vec3	MAIN_LIGHT_DIR = normalize(vec3(0.3, 0.8, -1.0));
 
-const vec3	MAIN_DIR = normalize(vec3(0.3, 0.8, -1.0));
-
-const vec3	FILL_DIR = normalize(vec3(-0.7, -0.4, 0.6));
-const vec3	FILL_COLOR = vec3(0.45, 0.55, 0.85) * 0.35;
+const vec3	FILL_LIGHT_DIR = normalize(vec3(-0.7, -0.4, 0.6));
+const vec3	FILL_LIGHT_COLOR = vec3(0.45, 0.55, 0.85) * 0.35;
 
 const int	MAX_STEPS = 512;
 const float	MAX_DIST = 100.0;
@@ -44,12 +41,23 @@ const float	ESCAPE_R2 = 1.0e6;
 const float	AO_H0 = 0.06;
 const float	AO_CALIB = 0.35;
 const float	AO_K = 3.5;
+const float	AO_MIN = 0.35;
 const float	AO_W[5] = float[5](0.30, 0.27, 0.20, 0.14, 0.09);
 const vec3	UP = vec3(0.0, -1.0, 0.0);
-const vec3	SKY_COLOR = vec3(0.10, 0.12, 0.18);
+const vec3	SKY_COLOR = vec3(0.14, 0.11, 0.16);
 const vec3	GROUND_COLOR = vec3(0.14, 0.08, 0.045);
-const vec3	AO_TINT = vec3(0.34, 0.13, 0.09);
+const vec3	AO_TINT = vec3(0.55, 0.30, 0.20);
 const vec3	KEY_COLOR = vec3(1.0, 0.92, 0.80) * 0.85;
+
+const vec3	RIM_DIR = normalize(vec3(0.3, -0.8, 1.0));
+const vec3  RIM_COLOR = vec3(1.0, 0.85, 0.55) * 0.35;
+const float	RIM_POWER = 5.0;
+
+const vec3	BG_ZENITH = vec3(0.16, 0.09, 0.01);
+const vec3	BG_HORIZON = vec3(0.2902, 0.2157, 0.0235);
+const vec3	GLOW_COLOR = vec3(1.0, 0.7882, 0.549);
+const float	GLOW_POW = 4.0;
+const float	FOG_DENSITY = 0.05;
 
 struct ray {
 	vec3	ro;
@@ -178,7 +186,6 @@ float	calcScalarT(vec3 p)
 			break;
 	}
 
-	// return smoothstep(LOW_T, HIGH_T, trapMin);
 	return 1 - exp(-trapMin / CONSTRAST);
 }
 
@@ -199,7 +206,7 @@ float	calcAO(vec3 p, vec3 normal, float eps)
 
 		h *= 2.0;
 	}
-	return clamp(1 - AO_K * occ, 0.0, 1.0);
+	return mix(AO_MIN, 1.0, clamp(1 - AO_K * occ, 0.0, 1.0));
 }
 
 vec3	ambiantLight(vec3 normal, float ao)
@@ -207,6 +214,14 @@ vec3	ambiantLight(vec3 normal, float ao)
 	float	k = 0.5 + 0.5 * dot(normal, UP);
 	vec3	amb = mix(GROUND_COLOR, SKY_COLOR, k);
 	return amb * ao;
+}
+
+vec3	calcRim(vec3 normal, vec3 dir, float ao)
+{
+	vec3	V = -dir;
+	float	edge = pow(1 - max(dot(normal, V), 0.0), RIM_POWER);
+	float	side = max(dot(normal, RIM_DIR), 0.0);
+	return RIM_COLOR * edge * side * ao;
 }
 
 float	hash12(vec2 p)
@@ -222,6 +237,26 @@ vec3	dither(vec3 linearColor)
 	float	n = hash12(gl_FragCoord.xy) + hash12(gl_FragCoord.xy + 17.0) - 1.0;
 	enc += n / 255.0;
 	return pow(max(enc, 0.0), vec3(2.2));
+}
+
+vec3	palette(float t)
+{
+	t = clamp(t, 0.0, 1.0);
+	vec3	c = PAL[0];
+	for (int i = 0; i < 3; i++)
+	{
+		float f = clamp((t - PAL_POS[i]) / (PAL_POS[i + 1] - PAL_POS[i]), 0.0, 1.0);
+		c = mix(c, PAL[i + 1], f);
+	}
+	return c;
+}
+
+vec3	background(vec3 p)
+{
+	float	k = 0.5 + 0.5 * dot(p, UP);
+	vec3	bg = mix(BG_ZENITH, BG_HORIZON, k);
+	float	glow = pow(max(dot(p, RIM_DIR), 0.0), GLOW_POW);
+	return bg + GLOW_COLOR * glow;
 }
 
 void	main()
@@ -265,9 +300,10 @@ void	main()
 	if (!hit && !escaped && EXHAUSTED_IS_HIT)
 		hit = true;
 
+	vec3	bg = background(r.rd);
 	if (!hit)
 	{
-		fragColor = vec4(0.01, 0.01, 0.01, 1.0);
+		fragColor = vec4(dither(bg), 1.0);
 		return;
 	}
 	else if (g >= 0.0 && t != 0.0 && d.dist < eps)
@@ -283,18 +319,21 @@ void	main()
 	vec3	normal = calcNormal(p, eps, n);
 	float	occ = calcAO(p, normal, eps);
 	vec3	amb = ambiantLight(normal, occ);
-	vec3	key = KEY_COLOR * basicLambert(normal, MAIN_DIR) * (0.35 + 0.65 * occ);
-	vec3	fill = FILL_COLOR * basicLambert(normal, FILL_DIR) * (0.5 + 0.5 * occ);
+	vec3	key = KEY_COLOR * basicLambert(normal, MAIN_LIGHT_DIR) * (0.35 + 0.65 * occ);
+	vec3	fill = FILL_LIGHT_COLOR * basicLambert(normal, FILL_LIGHT_DIR) * (0.5 + 0.5 * occ);
 	vec3	tint = mix(AO_TINT, vec3(1.0), occ);
-	vec3	light = (key + fill + amb) * tint;
+	vec3	rim = calcRim(normal, r.rd, occ);
+	vec3	light = (key + fill + amb) * tint + rim;
 
 	float	scalarTColor = calcScalarT(p);
-	vec3	color = mix(SECOND_COLOR, MAIN_COLOR, scalarTColor);
+	vec3	color = palette(scalarTColor);
 
-	// fragColor = vec4(dither(vec3(color * fill * 4.0)), 1.0);
-	// fragColor = vec4(dither(vec3(amb)), 1.0);
-	// fragColor = vec4(dither(vec3(color * amb)), 1.0);
-	// fragColor = vec4(dither(vec3(color)), 1.0);
-	// fragColor = vec4(color * light, 1.0);
-	fragColor = vec4(dither(color * light), 1.0);
+	float	fog = 1.0 - exp(-FOG_DENSITY * t);
+	vec3	finalColor = mix(color * light, bg, fog);
+
+	// fragColor = vec4(vec3(occ), 1.0);
+	// fragColor = vec4(dither(light), 1.0);
+	// fragColor = vec4(dither(color), 1.0);
+	// fragColor = vec4(step(0.85, scalarTColor));
+	fragColor = vec4(dither(finalColor), 1.0);
 }
